@@ -1,0 +1,312 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="robots" content="noindex, nofollow">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Minty · Najeeb</title>
+    <!-- Premium Fonts & Material Symbols (Merged Single Request for MCU Performance) -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,600&family=Inter:wght@400;500;600;700&family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@24,300,0,0&display=block" rel="stylesheet">
+    <link rel="stylesheet" href="style.css">
+    <link rel="icon" href="asset/icon.svg" type="image/svg+xml">
+    <link rel="apple-touch-icon" href="asset/apple-touch-icon.png" sizes="180x180">
+</head>
+<body>
+    <div class="page-backdrop" aria-hidden="true">
+        <img src="asset/minty.jpg" alt="" decoding="async">
+    </div>
+    <div class="app-container">
+        <!-- HEADER -->
+        <header class="app-header">
+            <div class="header-left">
+                <img class="launcher-emblem" src="asset/icon.svg" alt="Minty" width="56" height="56">
+            </div>
+            <div class="header-center">
+                <span class="material-symbols-outlined header-time-icon">schedule</span>
+                <span class="header-clock">--:--</span>
+                <span class="header-divider"></span>
+                <span class="header-date">--</span>
+            </div>
+            <div class="header-right">
+                <button id="btn-settings" class="header-action-btn" title="Settings" type="button">
+                    <span class="material-symbols-outlined">settings</span>
+                </button>
+                <button id="btn-fullscreen-launcher" class="header-action-btn" title="Go Fullscreen" type="button">
+                    <span class="material-symbols-outlined">open_in_full</span>
+                </button>
+            </div>
+        </header>
+
+        <!-- MAIN LAYOUT -->
+        <main class="app-main">
+            <!-- INPUT CONSOLE -->
+            <section class="console-section">
+                <div class="home-logo-container">
+                    <h1 class="home-wordmark">
+                        <span class="wordmark-title">Minty</span>
+                        <span class="wordmark-subtitle">Najeeb&rsquo;s launcher</span>
+                    </h1>
+                </div>
+                <div class="console-input-wrapper">
+                    <span class="material-symbols-outlined launcher-link-icon">link</span>
+                    <input type="text" id="url-input" placeholder="Enter a website address" aria-label="Website address" autocomplete="off" spellcheck="false">
+                    <button id="clear-btn" class="clear-btn-overlay">
+                        <span class="material-symbols-outlined">close</span>
+                    </button>
+                    <button id="btn-optimized" class="btn-launch-primary" type="button">
+                        <span>LAUNCH</span>
+                        <span class="material-symbols-outlined">chevron_right</span>
+                    </button>
+                </div>
+            </section>
+
+            <!-- QUICK APPS -->
+            <section class="quick-apps-section">
+                <div class="section-header">
+                    <span class="section-title">Quick Apps</span>
+                    <div class="section-actions">
+                        <button id="btn-show-all-apps" class="show-all-btn" type="button" aria-haspopup="dialog" aria-controls="modal-all-apps">Show All</button>
+                        <button id="btn-edit-quick-apps" class="edit-favorites-btn" type="button">Edit</button>
+                    </div>
+                </div>
+                <div id="quick-apps-grid" class="quick-apps-grid">
+                    <!-- Dynamic Quick Apps Populated by JS -->
+                </div>
+            </section>
+
+            <!-- FAVORITES / SMART CARDS CAROUSEL -->
+            <section class="favorites-section">
+                <div class="section-header">
+                    <span class="section-title">Last Opened</span>
+                    <button id="btn-edit-favorites" class="edit-favorites-btn">Edit</button>
+                </div>
+                <div class="carousel-outer">
+                    <div id="favorites-carousel" class="favorites-carousel">
+                        <!-- Dynamic Smart Cards Populated by JS -->
+                    </div>
+                </div>
+            </section>
+        </main>
+        <footer class="app-footer">
+            <div class="footer-credit">
+                <span><strong>Minty</strong></span>
+                <span class="footer-divider"></span>
+                <span>Made by Najeeb</span>
+            </div>
+            <button id="btn-help" class="footer-info-btn" title="Help & Connection Guide" type="button">
+                <span class="material-symbols-outlined">info</span>
+            </button>
+        </footer>
+    </div>
+
+    <!-- MODAL: REDIRECT (FULLSCREEN LOADER) -->
+    <div id="view-redirect" class="redirect-screen hidden">
+        <div class="redirect-content">
+            <div class="redirect-logo-wrapper">
+                <img class="launcher-emblem launcher-emblem-loading" src="asset/icon.svg" alt="Minty" width="104" height="104">
+            </div>
+            <h2 class="redirect-title">Optimizing Viewport...</h2>
+            <p class="redirect-subtitle">Launching in Fullscreen Mode</p>
+            <div class="progress-bar-container">
+                <div id="redirect-progress" class="progress-bar-fill"></div>
+            </div>
+            <p class="redirect-fallback-tip">If the page doesn't load, use "Open normally".</p>
+        </div>
+    </div>
+
+    <!-- MODALS OVERLAYS -->
+    <div id="modal-all-apps" class="modal-overlay hidden">
+        <div class="modal-content apps-folder" role="dialog" aria-modal="true" aria-labelledby="all-apps-title" tabindex="-1">
+            <div class="modal-header">
+                <span class="modal-title" id="all-apps-title">All Apps</span>
+                <div class="section-actions">
+                    <button id="btn-edit-all-apps" class="edit-favorites-btn" type="button">Edit</button>
+                    <button class="modal-close" id="btn-close-all-apps" type="button" aria-label="Close All Apps">
+                        <span class="material-symbols-outlined" aria-hidden="true">close</span>
+                    </button>
+                </div>
+            </div>
+            <div id="all-apps-grid" class="all-apps-grid"></div>
+        </div>
+    </div>
+    <!-- ADD/EDIT FAVORITE / QUICK APP MODAL -->
+    <div id="modal-add-favorite" class="modal-overlay hidden">
+        <div class="modal-content">
+            <div class="modal-header">
+                <span class="modal-title" id="fav-modal-title">Add to Favorites</span>
+                <button class="modal-close" id="btn-close-add-fav">
+                    <span class="material-symbols-outlined">close</span>
+                </button>
+            </div>
+            <div class="modal-body form-padding">
+                <div class="form-group">
+                    <label class="form-label" for="fav-url-input">URL Link</label>
+                    <input type="text" id="fav-url-input" placeholder="https://..." autocomplete="off">
+                </div>
+                <div class="form-group">
+                    <label class="form-label" for="fav-label-input">Name</label>
+                    <input type="text" id="fav-label-input" placeholder="My Streaming Service" autocomplete="off">
+                </div>
+                <button id="btn-save-favorite" class="btn-modal-primary">SAVE</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- OPTIONS DIALOG MODAL -->
+    <div id="modal-options" class="modal-overlay hidden">
+        <div class="modal-content">
+            <div class="modal-header">
+                <span class="modal-title">Options</span>
+                <button class="modal-close" id="btn-close-options">
+                    <span class="material-symbols-outlined">close</span>
+                </button>
+            </div>
+            <div class="modal-actions-list">
+                <button id="opt-direct" class="modal-action-row">
+                    <span class="material-symbols-outlined modal-action-icon">launch</span>
+                    <div class="modal-action-details">
+                        <span class="modal-action-name">Open normally</span>
+                        <span class="modal-action-desc">Open the link directly</span>
+                    </div>
+                </button>
+                <button id="opt-optimized" class="modal-action-row">
+                    <span class="material-symbols-outlined modal-action-icon">open_in_full</span>
+                    <div class="modal-action-details">
+                        <span class="modal-action-name">Open optimized</span>
+                        <span class="modal-action-desc">Force Tesla Fullscreen Mode</span>
+                    </div>
+                </button>
+                <button id="opt-helper-login" class="modal-action-row">
+                    <span class="material-symbols-outlined modal-action-icon">login</span>
+                    <div class="modal-action-details">
+                        <span class="modal-action-name">Assisted Login</span>
+                        <span class="modal-action-desc">Launch directly on the login page</span>
+                    </div>
+                </button>
+                <button id="opt-copy" class="modal-action-row">
+                    <span class="material-symbols-outlined modal-action-icon">content_copy</span>
+                    <div class="modal-action-details">
+                        <span class="modal-action-name">Copy link</span>
+                        <span class="modal-action-desc">Copy optimized fullscreen URL</span>
+                    </div>
+                </button>
+                <button id="opt-move-left" class="modal-action-row">
+                    <span class="material-symbols-outlined modal-action-icon">arrow_back</span>
+                    <div class="modal-action-details">
+                        <span class="modal-action-name">Move Left</span>
+                        <span class="modal-action-desc">Shift this item earlier in the list</span>
+                    </div>
+                </button>
+                <button id="opt-move-right" class="modal-action-row">
+                    <span class="material-symbols-outlined modal-action-icon">arrow_forward</span>
+                    <div class="modal-action-details">
+                        <span class="modal-action-name">Move Right</span>
+                        <span class="modal-action-desc">Shift this item later in the list</span>
+                    </div>
+                </button>
+                <button id="opt-edit" class="modal-action-row">
+                    <span class="material-symbols-outlined modal-action-icon">edit</span>
+                    <div class="modal-action-details">
+                        <span class="modal-action-name">Edit</span>
+                        <span class="modal-action-desc">Modify title, URL, or icon</span>
+                    </div>
+                </button>
+                <button id="opt-delete" class="modal-action-row text-red">
+                    <span class="material-symbols-outlined modal-action-icon">delete</span>
+                    <div class="modal-action-details">
+                        <span class="modal-action-name">Delete</span>
+                        <span class="modal-action-desc">Remove from launcher</span>
+                    </div>
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- HELP MODAL -->
+    <div id="modal-help" class="modal-overlay hidden">
+        <div class="modal-content guide-modal">
+            <div class="modal-header">
+                <span class="modal-title">Help & Connection Guide</span>
+                <button class="modal-close" id="btn-close-help">
+                    <span class="material-symbols-outlined">close</span>
+                </button>
+            </div>
+            <div class="modal-body scrollable-modal-body">
+                <div class="help-item">
+                    <h4>What does optimized launch do?</h4>
+                    <p>Optimized launch opens your selected website through a YouTube redirect URL to request Tesla's fullscreen media context. This is a practical workaround, not an official Tesla feature, and it may change with future Tesla software updates.</p>
+                </div>
+                <div class="help-item">
+                    <h4>Why do I need to sign in again?</h4>
+                    <p>Tesla may use different browser contexts for normal browsing and fullscreen media. If a service asks you to sign in again, complete the login directly on that website after launching it.</p>
+                </div>
+                <div class="help-item">
+                    <h4>Why not embed websites here?</h4>
+                    <p>Streaming services, DRM, cookies, and login flows work best as top-level pages. This launcher does not proxy, iframe, or intercept third-party websites.</p>
+                </div>
+                <div class="help-item">
+                    <h4>Which mode should I use?</h4>
+                    <p>Use Quick Apps for the fastest Tesla-first flow. Use the URL field when you want to open a custom media website or direct link.</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- SETTINGS MODAL -->
+    <div id="modal-settings" class="modal-overlay hidden">
+        <div class="modal-content settings-modal">
+            <div class="modal-header">
+                <span class="modal-title">Settings</span>
+                <button class="modal-close" id="btn-close-settings">
+                    <span class="material-symbols-outlined">close</span>
+                </button>
+            </div>
+            <div class="modal-body settings-panel-body">
+                <div class="settings-row">
+                    <div class="settings-info">
+                        <span class="settings-name">Haptic Feedback</span>
+                        <span class="settings-desc">Vibrate on touch interactions</span>
+                    </div>
+                    <label class="switch">
+                        <input type="checkbox" id="vibration-toggle">
+                        <span class="slider"></span>
+                    </label>
+                </div>
+                <div class="settings-row">
+                    <div class="settings-info">
+                        <span class="settings-name">Long Press Duration</span>
+                        <span class="settings-desc">Time required to trigger options</span>
+                    </div>
+                    <div class="slider-container">
+                        <input type="range" min="500" max="2000" value="1000" step="100" id="long-press-slider">
+                        <span id="long-press-value">1000ms</span>
+                    </div>
+                </div>
+                <div class="settings-row">
+                    <div class="settings-info">
+                        <span class="settings-name">Time Format</span>
+                        <span class="settings-desc">Show time in 12h or 24h format</span>
+                    </div>
+                    <div class="segmented-control" id="time-format-control">
+                        <button type="button" class="segment-btn active" data-value="24h">24h</button>
+                        <button type="button" class="segment-btn" data-value="12h">12h</button>
+                    </div>
+                </div>
+                <div class="settings-row settings-reset-row">
+                    <button id="btn-reset-settings" class="btn-modal-danger">RESET SETTINGS</button>
+                </div>
+                <div class="settings-footer-credits">
+                    <p class="settings-credit-text"><strong>Minty</strong> by Najeeb</p>
+                    <p class="settings-credit-subtext">A personal Tesla launcher</p>
+                    <p class="settings-disclaimer-text">Minty is a personal project based on the open-source Tesla Fullscreen Launcher (MIT). It is not affiliated with, sponsored by, or endorsed by Tesla, Inc. TESLA is a registered trademark of Tesla, Inc.</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Scripts -->
+    <script src="app.js"></script>
+</body>
+</html>

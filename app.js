@@ -1,0 +1,1268 @@
+/* ==========================================================================
+   Minty - Najeeb's Tesla Launcher Logic (Premium HMI)
+   ========================================================================== */
+
+document.addEventListener('DOMContentLoaded', () => {
+
+    // Default configuration for initial launcher favorites (empty: add your own)
+    const DEFAULT_FAVORITES = [];
+
+    // Default configuration for initial quick apps (empty: add your own from the home screen)
+    const DEFAULT_QUICK_APPS = [];
+
+    let selectedItem = null;
+    let selectedIsQuickApp = false;
+    let selectedIsRecent = false;
+    
+    let editModeFavorites = false;
+    let editModeQuickApps = false;
+    let quickAppDrag = null;
+
+    // Settings defaults
+    const defaultSettings = {
+        vibrationEnabled: true,
+        longPressDuration: 800, // snappier touch holds
+        timeFormat24h: true
+    };
+
+    function loadSettings() {
+        try {
+            return {
+                ...defaultSettings,
+                ...(JSON.parse(localStorage.getItem('teslaLauncherSettings_v4')) || {})
+            };
+        } catch (e) {
+            return {...defaultSettings};
+        }
+    }
+
+    let settings = loadSettings();
+
+    // ==========================================================================
+    // Helper & Redirection Functions
+    // ==========================================================================
+
+    function triggerHapticFeedback() {
+        if (settings.vibrationEnabled && navigator.vibrate) {
+            navigator.vibrate(30); // Subtler 30ms haptic
+        }
+    }
+
+    function isSafeUrl(url) {
+        return typeof url === 'string' && /^https?:\/\//i.test(url);
+    }
+
+    function normalizeUrl(input) {
+        let val = input.trim();
+        if (!val) return '';
+
+        const hasSpace = val.includes(' ');
+        const hasDot = val.includes('.');
+
+        if (hasSpace || !hasDot) {
+            return 'https://www.google.com/search?q=' + encodeURIComponent(val);
+        }
+
+        if (/^https?:\/\//i.test(val)) {
+            return val;
+        }
+
+        return 'https://' + val;
+    }
+
+    function getOptimizedUrl(url) {
+        const normalized = normalizeUrl(url);
+        if (normalized.startsWith('https://www.youtube.com/redirect?q=')) {
+            return normalized;
+        }
+        // Redirect helper to break Tesla browser window out to fullscreen
+        return `https://www.youtube.com/redirect?q=${encodeURIComponent(normalized)}`;
+    }
+
+    function getHelperLoginUrl(rawUrl) {
+        try {
+            const url = new URL(normalizeUrl(rawUrl));
+            const host = url.hostname.toLowerCase();
+            
+            if (host.includes('canalplus.com') || host.includes('mycanal.fr')) {
+                return 'https://pass.canalplus.com/log/in?dest=' + encodeURIComponent('https://www.canalplus.com/');
+            }
+            if (host.includes('netflix.com')) {
+                return 'https://www.netflix.com/login';
+            }
+            if (host.includes('disneyplus.com')) {
+                return 'https://www.disneyplus.com/login';
+            }
+            if (host.includes('youtube.com') || host.includes('youtu.be')) {
+                return 'https://accounts.google.com/ServiceLogin';
+            }
+            if (host.includes('plex.tv')) {
+                return 'https://app.plex.tv/desktop/#!/login';
+            }
+            if (host.includes('twitch.tv')) {
+                return 'https://www.twitch.tv/login';
+            }
+            if (host.includes('spotify.com')) {
+                return 'https://accounts.spotify.com/login';
+            }
+            
+            return url.origin + '/login';
+        } catch (e) {
+            return rawUrl;
+        }
+    }
+
+    function escapeHtml(str) {
+        if (typeof str !== 'string') return '';
+        return str
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;')
+            .replace(/'/g, '&#039;');
+    }
+
+    /* REVIEW-001 #6 — Request highest practical resolution (256px)
+       and provide lightweight onerror fallback chain. */
+    function getFaviconUrl(url) {
+        try {
+            const parsedUrl = new URL(normalizeUrl(url));
+            const hostname = parsedUrl.hostname;
+            return `https://www.google.com/s2/favicons?domain=${hostname}&sz=256`;
+        } catch (e) {
+            return 'asset/icon.svg';
+        }
+    }
+
+    window.faviconFallback = function(img) {
+        if (!img.dataset.retried) {
+            img.dataset.retried = '1';
+            const src = img.src;
+            if (src.includes('sz=256')) {
+                img.src = src.replace('sz=256', 'sz=64');
+                return;
+            }
+        }
+        img.src = 'asset/icon.svg';
+    };
+
+    // ==========================================================================
+    // Smart Memory State Engine
+    // ==========================================================================
+
+    function updateSmartCardContext(url) {
+        try {
+            const normalized = normalizeUrl(url);
+            const urlObj = new URL(normalized);
+            const host = urlObj.hostname.toLowerCase();
+            
+            // Check favorites first
+            let favs = getFavorites();
+            let favUpdated = false;
+
+            favs.forEach(fav => {
+                const favHost = new URL(normalizeUrl(fav.url)).hostname.toLowerCase();
+                if (host === favHost || host.endsWith('.' + favHost) || favHost.endsWith('.' + host)) {
+                    fav.lastUrl = normalized;
+                    fav.lastOpened = Date.now(); // update opened timestamp for sorting
+                    
+                    if (host.includes('twitch.tv')) {
+                        const channel = urlObj.pathname.split('/').filter(Boolean)[0];
+                        fav.lastContext = channel ? `Last channel: ${channel}` : 'Last channel';
+                    } else if (host.includes('youtube.com') || host.includes('youtu.be')) {
+                        let videoId = '';
+                        if (host.includes('youtu.be')) {
+                            videoId = urlObj.pathname.split('/').filter(Boolean)[0];
+                        } else {
+                            videoId = urlObj.searchParams.get('v');
+                        }
+                        fav.lastContext = videoId ? `Last video: ${videoId}` : 'Last video';
+                    } else if (host.includes('plex.tv')) {
+                        fav.lastContext = 'Last server';
+                    } else if (host.includes('jellyfin')) {
+                        fav.lastContext = 'Last session';
+                    } else if (host.includes('netflix.com')) {
+                        fav.lastContext = 'Last watch';
+                    } else {
+                        let path = urlObj.pathname + urlObj.search;
+                        if (path.length > 20) path = path.substring(0, 17) + '...';
+                        fav.lastContext = path !== '/' ? `Last: ${path}` : 'Last launched';
+                    }
+                    favUpdated = true;
+                }
+            });
+
+            if (favUpdated) {
+                localStorage.setItem('tesla_launcher_favs_v4', JSON.stringify(favs));
+                renderFavorites();
+                return;
+            }
+
+            // Check Quick Apps next
+            let apps = getQuickApps();
+            let appUpdated = false;
+
+            apps.forEach(app => {
+                const appHost = new URL(normalizeUrl(app.url)).hostname.toLowerCase();
+                if (host === appHost || host.endsWith('.' + appHost) || appHost.endsWith('.' + host)) {
+                    app.lastOpened = Date.now(); // bump timestamp
+                    appUpdated = true;
+                }
+            });
+
+            if (appUpdated) {
+                localStorage.setItem('tesla_launcher_quick_apps_v6', JSON.stringify(apps));
+                renderQuickApps();
+                return;
+            }
+
+            // Otherwise, add to Recents (which will also sort them dynamically)
+            addRecentLaunch(normalized);
+        } catch (e) {
+            console.error("Error updating smart card context", e);
+        }
+    }
+
+    // ==========================================================================
+    // Launch Handlers
+    // ==========================================================================
+
+    function launch(rawUrl, mode) {
+        const url = rawUrl.trim();
+        if (!url) {
+            const inputEl = document.getElementById('url-input');
+            inputEl.classList.add('shake-anim');
+            inputEl.focus();
+            setTimeout(() => inputEl.classList.remove('shake-anim'), 400);
+            return;
+        }
+
+        const normalized = normalizeUrl(url);
+        
+        // Update context memory and dynamic sorting timestamps
+        updateSmartCardContext(normalized);
+
+        const target = (mode === 'optimized') ? getOptimizedUrl(normalized) : normalized;
+
+        if (mode === 'optimized') {
+            // Trigger fullscreen redirection overlay
+            const redirectScreen = document.getElementById('view-redirect');
+            redirectScreen.classList.remove('hidden');
+            
+            const progress = document.getElementById('redirect-progress');
+            progress.style.width = '0%';
+            
+            setTimeout(() => {
+                progress.style.width = '100%';
+            }, 50);
+
+            // Execute redirect after 1.4s bar completion
+            setTimeout(() => {
+                window.location.href = target;
+            }, 1400);
+        } else {
+            // Direct load preserving normal cookies
+            window.location.href = target;
+        }
+    }
+
+    // Direct url loading param support
+    const urlParams = new URLSearchParams(window.location.search);
+    const launchUrl = urlParams.get('launch') || urlParams.get('url');
+    if (launchUrl) {
+        const target = getOptimizedUrl(launchUrl);
+        if (target) {
+            try {
+                const cleanUrl = window.location.protocol + "//" + window.location.host + window.location.pathname;
+                window.history.replaceState({ path: cleanUrl }, '', cleanUrl);
+            } catch (e) {}
+            window.location.replace(target);
+            return;
+        }
+    }
+
+    // ==========================================================================
+    // LocalStorage Data Controllers
+    // ==========================================================================
+
+    // --- Favorites ---
+    function getFavorites() {
+        const favsKeyV4 = 'tesla_launcher_favs_v4';
+        const favs = localStorage.getItem(favsKeyV4);
+        if (favs) {
+            return JSON.parse(favs);
+        }
+
+        localStorage.setItem(favsKeyV4, JSON.stringify(DEFAULT_FAVORITES));
+        return DEFAULT_FAVORITES;
+    }
+
+    function saveFavorites(favs) {
+        localStorage.setItem('tesla_launcher_favs_v4', JSON.stringify(favs));
+        renderFavorites();
+    }
+
+    // --- Quick Apps ---
+    function getQuickApps() {
+        const appsKeyV6 = 'tesla_launcher_quick_apps_v6';
+        const appsStr = localStorage.getItem(appsKeyV6);
+        let appsList = [];
+        if (appsStr) {
+            appsList = JSON.parse(appsStr);
+        } else {
+            localStorage.setItem(appsKeyV6, JSON.stringify(DEFAULT_QUICK_APPS));
+            appsList = [...DEFAULT_QUICK_APPS];
+        }
+
+        return appsList;
+    }
+
+    function saveQuickApps(apps) {
+        localStorage.setItem('tesla_launcher_quick_apps_v6', JSON.stringify(apps));
+        renderQuickApps();
+    }
+
+    // --- Recents ---
+    function getRecentLaunches() {
+        const recents = localStorage.getItem('tesla_launcher_recent_launches_v3');
+        return recents ? JSON.parse(recents) : [];
+    }
+
+    function addRecentLaunch(url) {
+        let recents = getRecentLaunches();
+        recents = recents.filter(item => item.url !== url);
+        
+        recents.unshift({
+            id: 'recent-' + Date.now(),
+            url: url,
+            name: url.replace(/^https?:\/\/(www\.)?/i, '').split('/')[0],
+            timestamp: Date.now()
+        });
+
+        if (recents.length > 5) recents = recents.slice(0, 5);
+        localStorage.setItem('tesla_launcher_recent_launches_v3', JSON.stringify(recents));
+        renderFavorites();
+    }
+
+    function deleteRecentLaunch(id) {
+        let recents = getRecentLaunches();
+        recents = recents.filter(item => item.id !== id);
+        localStorage.setItem('tesla_launcher_recent_launches_v3', JSON.stringify(recents));
+        renderFavorites();
+    }
+
+    // ==========================================================================
+    // UI Render Engine
+    // ==========================================================================
+
+    // --- Favorites & Recents Dynamic Sorting Render ---
+    function renderFavorites() {
+        const carousel = document.getElementById('favorites-carousel');
+        if (!carousel) return;
+        carousel.innerHTML = '';
+
+        const favs = getFavorites();
+        const recents = getRecentLaunches();
+
+        // Standardize schemas for sorting:
+        const normalizedFavs = favs.map(f => ({
+            ...f,
+            isRecent: false,
+            sortTime: f.lastOpened || 0
+        }));
+
+        const normalizedRecents = recents.map(r => ({
+            id: r.id,
+            name: r.name,
+            url: r.url,
+            lastUrl: r.url,
+            icon: 'globe',
+            launchMode: 'optimized',
+            isRecent: true,
+            sortTime: r.timestamp || 0
+        }));
+
+        // Combine Pinned Favorites and Recents
+        const combined = [...normalizedFavs, ...normalizedRecents];
+
+        // Sort by lastOpened / timestamp descending (dynamic ordering)
+        combined.sort((a, b) => {
+            const timeA = a.sortTime;
+            const timeB = b.sortTime;
+            if (timeB !== timeA) {
+                return timeB - timeA;
+            }
+            // If they are equal (e.g. both 0), sort Favorites first, then Recents, then alphabetically
+            if (a.isRecent && !b.isRecent) return 1;
+            if (!a.isRecent && b.isRecent) return -1;
+            return a.name.localeCompare(b.name);
+        });
+
+        if (combined.length === 0) {
+            carousel.innerHTML = '<div class="favorites-empty"><span class="material-symbols-outlined" aria-hidden="true">eco</span><span>Sites you open will show up here</span></div>';
+            return;
+        }
+
+        // Draw dynamically sorted cards
+        combined.forEach(item => {
+            const card = document.createElement('div');
+            card.className = 'smart-card';
+            
+            let contextText = item.lastContext;
+            if (item.isRecent) {
+                const timeStr = new Date(item.sortTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+                contextText = `Recent launch • ${timeStr}`;
+            } else if (!contextText) {
+                contextText = 'Direct launch';
+            }
+            
+            const faviconUrl = getFaviconUrl(item.url);
+            
+            card.innerHTML = `
+                <button class="card-delete-badge" title="Delete">&times;</button>
+                <div class="smart-card-header">
+                    <div class="smart-card-brand">
+                        <img class="smart-card-icon" src="${faviconUrl}" onerror="faviconFallback(this)" alt="${escapeHtml(item.name)}">
+                        <span class="smart-card-title">${escapeHtml(item.name)}</span>
+                    </div>
+                </div>
+                <div class="smart-card-meta-row">
+                    <span class="smart-card-context">${escapeHtml(contextText)}</span>
+                    <button class="smart-card-launch-btn" ${item.isRecent ? 'style="color: #9AA0A6;"' : ''}>Open</button>
+                </div>
+            `;
+
+            // Delete badge triggers in edit mode
+            const delBtn = card.querySelector('.card-delete-badge');
+            if (editModeFavorites) delBtn.style.display = 'flex';
+            
+            delBtn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                if (item.isRecent) {
+                    deleteRecentLaunch(item.id);
+                } else {
+                    if (confirm(`Are you sure you want to delete ${item.name}?`)) {
+                        let updatedFavs = getFavorites().filter(f => f.id !== item.id);
+                        saveFavorites(updatedFavs);
+                    }
+                }
+            });
+
+            setupCardInteraction(card, item, item.isRecent, false);
+            carousel.appendChild(card);
+        });
+
+        // Add Pinned card Add-Button at the end of the carousel
+        const addCard = document.createElement('div');
+        addCard.className = 'smart-card add-favorite-card';
+        addCard.innerHTML = `
+            <div class="add-card-icon">+</div>
+            <span class="add-card-label">Add</span>
+        `;
+        
+        addCard.addEventListener('click', () => {
+            triggerHapticFeedback();
+            document.getElementById('fav-url-input').value = document.getElementById('url-input').value;
+            document.getElementById('fav-label-input').value = '';
+            document.getElementById('fav-modal-title').textContent = 'Add to Favorites';
+            selectedIsQuickApp = false;
+            selectedItem = null;
+            openModal('modal-add-favorite');
+        });
+
+        carousel.appendChild(addCard);
+    }
+
+    // --- Quick Apps Dynamic Render ---
+    function getHomeQuickAppCount() {
+        const grid = document.getElementById('quick-apps-grid');
+        const style = getComputedStyle(grid);
+        const cardWidth = parseFloat(style.getPropertyValue('--quick-app-width')) || 132;
+        const gap = parseFloat(style.columnGap) || 12;
+        return Math.max(4, Math.floor((grid.clientWidth + gap) / (cardWidth + gap)) - 1);
+    }
+
+    function renderQuickApps() {
+        const apps = getQuickApps();
+        renderQuickAppsGrid('quick-apps-grid', apps.slice(0, getHomeQuickAppCount()));
+        renderQuickAppsGrid('all-apps-grid', apps);
+    }
+
+    function renderQuickAppsGrid(gridId, apps) {
+        const grid = document.getElementById(gridId);
+        if (!grid) return;
+        grid.innerHTML = '';
+        grid.classList.toggle('is-editing', editModeQuickApps);
+
+        apps.forEach(app => {
+            const btn = document.createElement('button');
+            btn.className = 'quick-app-btn';
+            btn.setAttribute('data-id', app.id);
+            btn.setAttribute('aria-label', app.name);
+            
+            const faviconUrl = getFaviconUrl(app.url);
+
+            const iconHtml = `<img src="${faviconUrl}" loading="lazy" decoding="async" onerror="faviconFallback(this)" alt="">`;
+
+            btn.innerHTML = `
+                <span class="card-delete-badge" role="button" aria-label="Delete">&times;</span>
+                ${iconHtml}
+                <span>${escapeHtml(app.name)}</span>
+            `;
+
+            // Delete badge triggers in edit mode
+            const delBtn = btn.querySelector('.card-delete-badge');
+            delBtn.setAttribute('aria-label', `Remove ${app.name}`);
+            if (editModeQuickApps) {
+                delBtn.style.display = 'flex';
+                delBtn.tabIndex = 0;
+            }
+            
+            delBtn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                if (confirm(`Remove Quick App ${app.name}?`)) {
+                    let updatedApps = getQuickApps().filter(a => a.id !== app.id);
+                    saveQuickApps(updatedApps);
+                }
+            });
+
+            delBtn.addEventListener('keydown', event => {
+                if (event.key === 'Enter' || event.key === ' ') {
+                    event.preventDefault();
+                    event.stopPropagation();
+                    delBtn.click();
+                }
+            });
+
+            setupCardInteraction(btn, app, false, true);
+            btn.addEventListener('keydown', event => {
+                if (event.key === 'Enter' || event.key === ' ') {
+                    event.preventDefault();
+                    if (editModeQuickApps) openOptionsModal(app, false, true);
+                    else launch(app.lastUrl || app.url, app.launchMode || 'optimized');
+                }
+            });
+            grid.appendChild(btn);
+        });
+
+        // Append the Add button to the grid (unconditionally to preserve visibility/discoverability)
+        const addBtn = document.createElement('button');
+        addBtn.className = 'quick-app-btn add-quick-app-btn';
+        addBtn.innerHTML = `
+            <span class="add-card-icon">+</span>
+            <span class="add-card-label">Add</span>
+        `;
+        
+        addBtn.addEventListener('click', () => {
+            triggerHapticFeedback();
+            document.getElementById('fav-url-input').value = document.getElementById('url-input').value;
+            document.getElementById('fav-label-input').value = '';
+            document.getElementById('fav-modal-title').textContent = 'Add to Quick Apps';
+            selectedIsQuickApp = true;
+            selectedItem = null;
+            openModal('modal-add-favorite');
+        });
+        grid.appendChild(addBtn);
+    }
+
+    // Pointer events support finger dragging without relying on HTML drag-and-drop.
+    function setupQuickAppReordering(grid) {
+        function moveTarget() {
+            const drag = quickAppDrag;
+            if (!drag || !drag.active) return;
+            const target = document.elementFromPoint(drag.x, drag.y)?.closest('.quick-app-btn');
+            if (!target || target === drag.element || target.parentElement !== grid) return;
+            if (target.classList.contains('add-quick-app-btn')) {
+                grid.insertBefore(drag.element, target);
+                return;
+            }
+            const cards = Array.from(grid.querySelectorAll('[data-id]'));
+            grid.insertBefore(drag.element, cards.indexOf(drag.element) < cards.indexOf(target) ? target.nextSibling : target);
+        }
+
+        function scrollAtEdge() {
+            const drag = quickAppDrag;
+            if (!drag || !drag.active || drag.grid !== grid) return;
+            const bounds = grid.getBoundingClientRect();
+            if (grid.id === 'all-apps-grid') {
+                const delta = drag.y < bounds.top + 40 ? -10 : drag.y > bounds.bottom - 40 ? 10 : 0;
+                grid.scrollTop += delta;
+            } else {
+                const delta = drag.x < bounds.left + 40 ? -10 : drag.x > bounds.right - 40 ? 10 : 0;
+                grid.scrollLeft += delta;
+            }
+            moveTarget();
+            drag.frame = requestAnimationFrame(scrollAtEdge);
+        }
+
+        grid.addEventListener('pointerdown', event => {
+            const element = event.target.closest('.quick-app-btn[data-id]');
+            if (!editModeQuickApps || !element || event.button !== 0 || quickAppDrag || event.target.closest('.card-delete-badge')) return;
+            event.preventDefault();
+            const bounds = element.getBoundingClientRect();
+            quickAppDrag = {
+                grid, element, id: element.dataset.id, pointerId: event.pointerId,
+                startX: event.clientX, startY: event.clientY, x: event.clientX, y: event.clientY,
+                offsetX: event.clientX - bounds.left, offsetY: event.clientY - bounds.top,
+                active: false, frame: 0, preview: null
+            };
+            element.setPointerCapture(event.pointerId);
+        });
+
+        grid.addEventListener('pointermove', event => {
+            const drag = quickAppDrag;
+            if (!drag || drag.grid !== grid || drag.pointerId !== event.pointerId) return;
+            drag.x = event.clientX;
+            drag.y = event.clientY;
+            if (!drag.active && Math.hypot(drag.x - drag.startX, drag.y - drag.startY) >= 8) {
+                drag.active = true;
+                const bounds = drag.element.getBoundingClientRect();
+                const style = getComputedStyle(drag.element);
+                drag.preview = drag.element.cloneNode(true);
+                drag.preview.removeAttribute('data-id');
+                drag.preview.removeAttribute('aria-label');
+                drag.preview.setAttribute('aria-hidden', 'true');
+                drag.preview.tabIndex = -1;
+                drag.preview.classList.add('quick-app-drag-preview');
+                Object.assign(drag.preview.style, { width: bounds.width + 'px', height: bounds.height + 'px', fontSize: style.fontSize, gap: style.gap });
+                const icon = drag.element.querySelector('img');
+                drag.preview.style.setProperty('--drag-icon-size', getComputedStyle(icon).width);
+                document.body.appendChild(drag.preview);
+                drag.element.classList.add('is-dragging');
+                triggerHapticFeedback();
+                drag.frame = requestAnimationFrame(scrollAtEdge);
+            }
+            if (drag.active) {
+                event.preventDefault();
+                drag.preview.style.transform = `translate3d(${drag.x - drag.offsetX}px, ${drag.y - drag.offsetY}px, 0)`;
+                moveTarget();
+            }
+        });
+
+        grid.addEventListener('pointerup', event => {
+            const drag = quickAppDrag;
+            if (!drag || drag.grid !== grid || drag.pointerId !== event.pointerId) return;
+            if (drag.active) finishQuickAppDrag(true);
+            else {
+                const app = getQuickApps().find(item => item.id === drag.id);
+                finishQuickAppDrag(false);
+                if (app) openOptionsModal(app, false, true);
+            }
+        });
+        grid.addEventListener('pointercancel', () => {
+            if (quickAppDrag?.grid === grid) finishQuickAppDrag(false);
+        });
+    }
+
+    function finishQuickAppDrag(commit) {
+        const drag = quickAppDrag;
+        if (!drag) return;
+        quickAppDrag = null;
+        cancelAnimationFrame(drag.frame);
+        drag.preview?.remove();
+        if (drag.element.hasPointerCapture(drag.pointerId)) drag.element.releasePointerCapture(drag.pointerId);
+        if (commit) {
+            const order = Array.from(drag.grid.querySelectorAll('[data-id]'), element => element.dataset.id);
+            const ids = new Set(order);
+            const apps = getQuickApps();
+            const byId = new Map(apps.map(app => [app.id, app]));
+            let index = 0;
+            saveQuickApps(apps.map(app => ids.has(app.id) ? byId.get(order[index++]) : app));
+        } else renderQuickApps();
+        const card = Array.from(drag.grid.querySelectorAll('[data-id]')).find(element => element.dataset.id === drag.id);
+        card?.focus({ preventScroll: true });
+    }
+
+    // Handles tap vs long press for tactile comfort
+    function setupCardInteraction(element, item, isRecent, isQuickApp) {
+        let pressTimer = null;
+        let isLongPress = false;
+        let isScrolling = false;
+
+        const startPress = (e) => {
+            if (isQuickApp && editModeQuickApps) return;
+            if (e.target.closest('.card-delete-badge')) return;
+            isLongPress = false;
+            isScrolling = false;
+            pressTimer = setTimeout(() => {
+                isLongPress = true;
+                triggerHapticFeedback();
+                openOptionsModal(item, isRecent, isQuickApp);
+            }, settings.longPressDuration);
+        };
+
+        const movePress = () => {
+            isScrolling = true;
+            clearTimeout(pressTimer);
+        };
+
+        const endPress = (e) => {
+            if (isQuickApp && editModeQuickApps) return;
+            if (e.target.closest('.card-delete-badge')) return;
+            clearTimeout(pressTimer);
+            if (isScrolling) return;
+
+            if (!isLongPress) {
+                triggerHapticFeedback();
+                // Launch last URL context if saved, otherwise default url
+                const targetUrl = item.lastUrl || item.url;
+                launch(targetUrl, item.launchMode || 'optimized');
+            }
+        };
+
+        element.addEventListener('mousedown', startPress);
+        element.addEventListener('mouseup', endPress);
+        element.addEventListener('mouseleave', () => clearTimeout(pressTimer));
+
+        element.addEventListener('touchstart', startPress, { passive: true });
+        element.addEventListener('touchmove', movePress, { passive: true });
+        element.addEventListener('touchend', endPress, { passive: true });
+    }
+
+    // ==========================================================================
+    // Modals Control Router
+    // ==========================================================================
+
+    function openModal(id) {
+        if (id !== 'modal-all-apps') closeModal('modal-all-apps');
+        const modal = document.getElementById(id);
+        if (modal) {
+            modal.classList.remove('hidden');
+        }
+    }
+
+    function closeModal(id) {
+        if (id === 'modal-all-apps' && quickAppDrag?.grid.id === 'all-apps-grid') finishQuickAppDrag(false);
+        const modal = document.getElementById(id);
+        if (modal) {
+            if (id === 'modal-all-apps' && modal.contains(document.activeElement)) {
+                document.getElementById('btn-show-all-apps').focus();
+            }
+            modal.classList.add('hidden');
+        }
+    }
+
+    // Bind close listeners for all overlays
+    document.querySelectorAll('.modal-close').forEach(btn => {
+        btn.addEventListener('click', () => {
+            triggerHapticFeedback();
+            const modal = btn.closest('.modal-overlay');
+            if (modal) closeModal(modal.id);
+        });
+    });
+
+    // Close on backdrop touch (safe keyboard dismiss on form fields)
+    document.querySelectorAll('.modal-overlay').forEach(overlay => {
+        overlay.addEventListener('click', (e) => {
+            if (e.target === overlay) {
+                if (overlay.id === 'modal-add-favorite' || overlay.id === 'modal-settings') {
+                    // Safety blur active element to dismiss Tesla virtual keyboard
+                    if (document.activeElement) document.activeElement.blur();
+                    return;
+                }
+                triggerHapticFeedback();
+                closeModal(overlay.id);
+            }
+        });
+    });
+
+    // Pinned trigger links
+    document.getElementById('btn-help').addEventListener('click', () => {
+        triggerHapticFeedback();
+        openModal('modal-help');
+    });
+
+    document.getElementById('btn-settings').addEventListener('click', () => {
+        triggerHapticFeedback();
+        openModal('modal-settings');
+    });
+
+    // Edit Favorites Button
+    const btnEditFavs = document.getElementById('btn-edit-favorites');
+    btnEditFavs.addEventListener('click', () => {
+        triggerHapticFeedback();
+        editModeFavorites = !editModeFavorites;
+        btnEditFavs.classList.toggle('active', editModeFavorites);
+        btnEditFavs.textContent = editModeFavorites ? 'Done' : 'Edit';
+        renderFavorites();
+    });
+
+    // Edit Quick Apps Button
+    const btnEditQuickApps = document.getElementById('btn-edit-quick-apps');
+    const btnEditAllApps = document.getElementById('btn-edit-all-apps');
+    function toggleQuickAppsEditing() {
+        triggerHapticFeedback();
+        editModeQuickApps = !editModeQuickApps;
+        btnEditQuickApps.classList.toggle('active', editModeQuickApps);
+        btnEditQuickApps.textContent = editModeQuickApps ? 'Done' : 'Edit';
+        btnEditAllApps.textContent = editModeQuickApps ? 'Done' : 'Edit';
+        btnEditAllApps.classList.toggle('active', editModeQuickApps);
+        renderQuickApps();
+    }
+    btnEditQuickApps.addEventListener('click', toggleQuickAppsEditing);
+    btnEditAllApps.addEventListener('click', toggleQuickAppsEditing);
+
+    document.getElementById('btn-show-all-apps').addEventListener('click', () => {
+        triggerHapticFeedback();
+        openModal('modal-all-apps');
+        document.querySelector('.apps-folder').focus();
+    });
+
+    document.getElementById('modal-all-apps').addEventListener('keydown', event => {
+        if (event.key === 'Escape') {
+            closeModal('modal-all-apps');
+            document.getElementById('btn-show-all-apps').focus();
+        } else if (event.key === 'Tab') {
+            const buttons = Array.from(document.querySelectorAll('#modal-all-apps button'));
+            const first = buttons[0];
+            const last = buttons[buttons.length - 1];
+            if (event.shiftKey && (document.activeElement === first || document.activeElement.classList.contains('apps-folder'))) {
+                event.preventDefault();
+                last.focus();
+            } else if (!event.shiftKey && document.activeElement === last) {
+                event.preventDefault();
+                first.focus();
+            }
+        }
+    });
+
+    // ==========================================================================
+    // Favorite / Quick App Modification Save Overlay
+    // ==========================================================================
+
+    document.getElementById('btn-save-favorite').addEventListener('click', async () => {
+        triggerHapticFeedback();
+        const url = document.getElementById('fav-url-input').value.trim();
+        const name = document.getElementById('fav-label-input').value.trim();
+        
+        if (!url) {
+            const urlInput = document.getElementById('fav-url-input');
+            urlInput.classList.add('shake-anim');
+            urlInput.focus();
+            setTimeout(() => urlInput.classList.remove('shake-anim'), 400);
+            return;
+        }
+
+        const cleanUrl = normalizeUrl(url);
+        const cleanName = name || cleanUrl.replace(/^https?:\/\/(www\.)?/i, '').split('/')[0];
+        const defaultIcon = 'globe';
+        
+        if (selectedIsQuickApp) {
+            let apps = getQuickApps();
+            if (selectedItem && selectedItem.id) {
+                // Edit existing app
+                apps = apps.map(a => {
+                    if (a.id === selectedItem.id) {
+                        return { ...a, name: cleanName, url: cleanUrl, icon: defaultIcon };
+                    }
+                    return a;
+                });
+            } else {
+                // Add new app
+                apps.push({
+                    id: 'qa-' + Date.now(),
+                    name: cleanName,
+                    url: cleanUrl,
+                    icon: defaultIcon,
+                    lastOpened: 0
+                });
+            }
+            saveQuickApps(apps);
+        } else {
+            let favs = getFavorites();
+            if (selectedItem && selectedItem.id && !selectedIsRecent) {
+                // Edit existing favorite
+                favs = favs.map(f => {
+                    if (f.id === selectedItem.id) {
+                        return {
+                            ...f,
+                            name: cleanName,
+                            url: cleanUrl,
+                            icon: defaultIcon,
+                            lastUrl: cleanUrl,
+                            lastContext: 'Edited URL'
+                        };
+                    }
+                    return f;
+                });
+            } else {
+                // Add new favorite
+                favs.push({
+                    id: 'fav-' + Date.now(),
+                    name: cleanName,
+                    url: cleanUrl,
+                    icon: defaultIcon,
+                    lastUrl: cleanUrl,
+                    lastContext: 'Direct launch',
+                    launchMode: 'optimized',
+                    lastOpened: 0
+                });
+            }
+            saveFavorites(favs);
+        }
+
+        closeModal('modal-add-favorite');
+        selectedItem = null;
+    });
+
+    // ==========================================================================
+    // Options Overlay Actions Controller
+    // ==========================================================================
+
+    function openOptionsModal(item, isRecent = false, isQuickApp = false) {
+        selectedItem = item;
+        selectedIsQuickApp = isQuickApp;
+        selectedIsRecent = isRecent;
+        
+        openModal('modal-options');
+
+        const optEdit = document.getElementById('opt-edit');
+        const optDelete = document.getElementById('opt-delete');
+        const optMoveLeft = document.getElementById('opt-move-left');
+        const optMoveRight = document.getElementById('opt-move-right');
+        
+        // Hide reordering elements for dynamically sorted favorites & recents
+        if (isQuickApp) {
+            optMoveLeft.style.display = 'flex';
+            optMoveRight.style.display = 'flex';
+            optEdit.style.display = 'flex';
+            optDelete.textContent = 'Remove Quick App';
+            
+            // Check boundary positions to disable moving out of bounds
+            const apps = getQuickApps();
+            const idx = apps.findIndex(a => a.id === item.id);
+            if (idx <= 0) {
+                optMoveLeft.style.opacity = '0.3';
+                optMoveLeft.style.pointerEvents = 'none';
+            } else {
+                optMoveLeft.style.opacity = '1';
+                optMoveLeft.style.pointerEvents = 'auto';
+            }
+            if (idx === -1 || idx >= apps.length - 1) {
+                optMoveRight.style.opacity = '0.3';
+                optMoveRight.style.pointerEvents = 'none';
+            } else {
+                optMoveRight.style.opacity = '1';
+                optMoveRight.style.pointerEvents = 'auto';
+            }
+        } else {
+            optMoveLeft.style.display = 'none';
+            optMoveRight.style.display = 'none';
+            
+            if (isRecent) {
+                optEdit.style.display = 'none';
+                optDelete.textContent = 'Remove from Recents';
+            } else {
+                optEdit.style.display = 'flex';
+                optDelete.textContent = 'Delete Favorite';
+            }
+        }
+    }
+
+    document.getElementById('opt-direct').addEventListener('click', () => {
+        if (selectedItem) {
+            triggerHapticFeedback();
+            const targetUrl = selectedItem.lastUrl || selectedItem.url;
+            launch(targetUrl, 'direct');
+            closeModal('modal-options');
+        }
+    });
+
+    document.getElementById('opt-optimized').addEventListener('click', () => {
+        if (selectedItem) {
+            triggerHapticFeedback();
+            const targetUrl = selectedItem.lastUrl || selectedItem.url;
+            launch(targetUrl, 'optimized');
+            closeModal('modal-options');
+        }
+    });
+
+    document.getElementById('opt-helper-login').addEventListener('click', () => {
+        if (selectedItem) {
+            triggerHapticFeedback();
+            const helperUrl = getHelperLoginUrl(selectedItem.url);
+            launch(helperUrl, 'optimized');
+            closeModal('modal-options');
+        }
+    });
+
+    document.getElementById('opt-copy').addEventListener('click', () => {
+        if (selectedItem) {
+            triggerHapticFeedback();
+            const targetUrl = getOptimizedUrl(selectedItem.lastUrl || selectedItem.url);
+            navigator.clipboard.writeText(targetUrl).then(() => {
+                const textEl = document.getElementById('opt-copy').querySelector('.modal-action-name');
+                const originalText = textEl.textContent;
+                textEl.textContent = 'Link copied!';
+                setTimeout(() => {
+                    textEl.textContent = originalText;
+                    closeModal('modal-options');
+                }, 800);
+            }).catch(() => {
+                alert('Copying failed.');
+            });
+        }
+    });
+
+    // Reorder Shift Left
+    document.getElementById('opt-move-left').addEventListener('click', () => {
+        if (selectedItem && selectedIsQuickApp) {
+            triggerHapticFeedback();
+            let apps = getQuickApps();
+            const idx = apps.findIndex(a => a.id === selectedItem.id);
+            if (idx > 0) {
+                // Swap position
+                const temp = apps[idx];
+                apps[idx] = apps[idx - 1];
+                apps[idx - 1] = temp;
+                saveQuickApps(apps);
+            }
+            closeModal('modal-options');
+        }
+    });
+
+    // Reorder Shift Right
+    document.getElementById('opt-move-right').addEventListener('click', () => {
+        if (selectedItem && selectedIsQuickApp) {
+            triggerHapticFeedback();
+            let apps = getQuickApps();
+            const idx = apps.findIndex(a => a.id === selectedItem.id);
+            if (idx !== -1 && idx < apps.length - 1) {
+                // Swap position
+                const temp = apps[idx];
+                apps[idx] = apps[idx + 1];
+                apps[idx + 1] = temp;
+                saveQuickApps(apps);
+            }
+            closeModal('modal-options');
+        }
+    });
+
+    document.getElementById('opt-edit').addEventListener('click', () => {
+        if (selectedItem) {
+            triggerHapticFeedback();
+            closeModal('modal-options');
+            
+            document.getElementById('fav-url-input').value = selectedItem.url;
+            document.getElementById('fav-label-input').value = selectedItem.name;
+            document.getElementById('fav-modal-title').textContent = selectedIsQuickApp ? 'Edit Quick App' : 'Edit Favorite';
+            
+            openModal('modal-add-favorite');
+        }
+    });
+
+    document.getElementById('opt-delete').addEventListener('click', () => {
+        if (selectedItem) {
+            triggerHapticFeedback();
+            closeModal('modal-options');
+            
+            if (selectedIsRecent) {
+                deleteRecentLaunch(selectedItem.id);
+            } else if (selectedIsQuickApp) {
+                if (confirm(`Remove Quick App ${selectedItem.name}?`)) {
+                    let updatedApps = getQuickApps().filter(a => a.id !== selectedItem.id);
+                    saveQuickApps(updatedApps);
+                }
+            } else {
+                if (confirm(`Delete Favorite ${selectedItem.name}?`)) {
+                    let updatedFavs = getFavorites().filter(f => f.id !== selectedItem.id);
+                    saveFavorites(updatedFavs);
+                }
+            }
+        }
+    });
+
+    // ==========================================================================
+    // UI Console Input Listeners & Keyboard Assists
+    // ==========================================================================
+
+    const urlInput = document.getElementById('url-input');
+    const clearBtn = document.getElementById('clear-btn');
+    const btnDirect = document.getElementById('btn-direct');
+    const btnOptimized = document.getElementById('btn-optimized');
+    const assistButtons = document.querySelectorAll('.assist-btn');
+
+    function updateClearButtonState() {
+        if (urlInput.value.length > 0) {
+            clearBtn.classList.add('visible');
+        } else {
+            clearBtn.classList.remove('visible');
+        }
+    }
+
+    urlInput.addEventListener('input', updateClearButtonState);
+    clearBtn.addEventListener('click', () => {
+        triggerHapticFeedback();
+        urlInput.value = '';
+        updateClearButtonState();
+        urlInput.focus();
+    });
+
+    assistButtons.forEach(btn => {
+        btn.addEventListener('click', () => {
+            triggerHapticFeedback();
+            const textToAppend = btn.getAttribute('data-value');
+            const startPos = urlInput.selectionStart;
+            const endPos = urlInput.selectionEnd;
+            const currentVal = urlInput.value;
+            
+            urlInput.value = currentVal.substring(0, startPos) + textToAppend + currentVal.substring(endPos);
+            const newCursor = startPos + textToAppend.length;
+            urlInput.setSelectionRange(newCursor, newCursor);
+            updateClearButtonState();
+            urlInput.focus();
+        });
+    });
+
+    if (btnDirect) {
+        btnDirect.addEventListener('click', () => {
+            triggerHapticFeedback();
+            launch(urlInput.value, 'direct');
+        });
+    }
+    btnOptimized.addEventListener('click', () => {
+        triggerHapticFeedback();
+        launch(urlInput.value, 'optimized');
+    });
+    urlInput.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') {
+            triggerHapticFeedback();
+            launch(urlInput.value, 'optimized');
+        }
+    });
+
+    // ==========================================================================
+    // System Settings Controller
+    // ==========================================================================
+
+    function applySettings() {
+        document.getElementById('vibration-toggle').checked = settings.vibrationEnabled;
+        document.getElementById('long-press-slider').value = settings.longPressDuration;
+        document.getElementById('long-press-value').textContent = settings.longPressDuration + 'ms';
+        
+        const segButtons = document.querySelectorAll('#time-format-control .segment-btn');
+        segButtons.forEach(btn => {
+            const val = btn.getAttribute('data-value');
+            if ((val === '24h' && settings.timeFormat24h) || (val === '12h' && !settings.timeFormat24h)) {
+                btn.classList.add('active');
+            } else {
+                btn.classList.remove('active');
+            }
+        });
+
+        updateClockDisplay();
+    }
+
+    function saveSettings() {
+        localStorage.setItem('teslaLauncherSettings_v4', JSON.stringify(settings));
+        applySettings();
+    }
+
+    function updateClockDisplay() {
+        const clockEl = document.querySelector('.header-clock');
+        if (!clockEl) return;
+
+        const now = new Date();
+        let hours = now.getHours();
+        const minutes = now.getMinutes().toString().padStart(2, '0');
+        const seconds = now.getSeconds().toString().padStart(2, '0');
+
+        if (!settings.timeFormat24h) {
+            const ampm = hours >= 12 ? ' PM' : ' AM';
+            hours = hours % 12;
+            hours = hours === 0 ? 12 : hours;
+            clockEl.textContent = `${hours}:${minutes}:${seconds}${ampm}`;
+        } else {
+            clockEl.textContent = `${hours.toString().padStart(2, '0')}:${minutes}:${seconds}`;
+        }
+
+        const dateEl = document.querySelector('.header-date');
+        if (dateEl) {
+            dateEl.textContent = now.toLocaleDateString('en-US', {
+                weekday: 'short',
+                month: 'short',
+                day: 'numeric'
+            });
+        }
+    }
+
+    document.getElementById('vibration-toggle').addEventListener('change', (e) => {
+        settings.vibrationEnabled = e.target.checked;
+        saveSettings();
+        triggerHapticFeedback();
+    });
+
+    const longPressSlider = document.getElementById('long-press-slider');
+    longPressSlider.addEventListener('input', (e) => {
+        const val = parseInt(e.target.value);
+        settings.longPressDuration = val;
+        document.getElementById('long-press-value').textContent = val + 'ms';
+    });
+    longPressSlider.addEventListener('change', () => {
+        saveSettings();
+        triggerHapticFeedback();
+    });
+
+    document.querySelectorAll('#time-format-control .segment-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+            triggerHapticFeedback();
+            const value = btn.getAttribute('data-value');
+            settings.timeFormat24h = (value === '24h');
+            saveSettings();
+        });
+    });
+
+    // Fullscreen Launcher Header Button click event
+    document.getElementById('btn-fullscreen-launcher').addEventListener('click', () => {
+        triggerHapticFeedback();
+        launch(window.location.href, 'optimized');
+    });
+
+    document.getElementById('btn-reset-settings').addEventListener('click', () => {
+        if (confirm('Reset all settings to default?')) {
+            settings = {...defaultSettings};
+            saveSettings();
+            triggerHapticFeedback();
+        }
+    });
+
+    // Reset redirect animation state on pageshow (e.g. user goes back in history)
+    window.addEventListener('pageshow', () => {
+        const redirectScreen = document.getElementById('view-redirect');
+        if (redirectScreen) redirectScreen.classList.add('hidden');
+        const progress = document.getElementById('redirect-progress');
+        if (progress) progress.style.width = '0%';
+    });
+
+    // ==========================================================================
+    // Initialization
+    // ==========================================================================
+
+    applySettings();
+    setupQuickAppReordering(document.getElementById('quick-apps-grid'));
+    setupQuickAppReordering(document.getElementById('all-apps-grid'));
+    let quickAppsResizeFrame = 0;
+    // End the car photo fade at the middle of the address bar.
+    function syncBackdropFade() {
+        const input = document.querySelector('.console-input-wrapper');
+        if (!input) return;
+        const rect = input.getBoundingClientRect();
+        document.documentElement.style.setProperty('--backdrop-end', `${Math.round(rect.top + rect.height / 2)}px`);
+    }
+    syncBackdropFade();
+    window.addEventListener('load', syncBackdropFade);
+
+    window.addEventListener('resize', () => {
+        syncBackdropFade();
+        cancelAnimationFrame(quickAppsResizeFrame);
+        quickAppsResizeFrame = requestAnimationFrame(() => {
+            if (quickAppDrag) finishQuickAppDrag(false);
+            else renderQuickApps();
+        });
+    });
+    setInterval(updateClockDisplay, 1000);
+    renderFavorites();
+    renderQuickApps();
+    updateClearButtonState();
+
+});
