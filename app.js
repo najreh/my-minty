@@ -8,7 +8,8 @@ document.addEventListener('DOMContentLoaded', () => {
     const DEFAULT_FAVORITES = [];
 
     // Always the first Quick App; it can't be edited, moved or removed.
-    const PINNED_QUICK_APP = { name: 'Najeeb ZFold7', url: 'https://td7.cc' };
+    // launchMode 'direct' skips the YouTube fullscreen redirect; switch to 'optimized' to restore it.
+    const PINNED_QUICK_APP = { name: 'Najeeb ZFold7', url: 'https://td7.cc', launchMode: 'direct' };
 
     // Default configuration for initial quick apps (empty: add your own from the home screen)
     const DEFAULT_QUICK_APPS = [];
@@ -498,7 +499,7 @@ document.addEventListener('DOMContentLoaded', () => {
             <span class="material-symbols-outlined pinned-quick-app-icon" aria-hidden="true">devices_fold</span>
             <span>${escapeHtml(PINNED_QUICK_APP.name)}</span>
         `;
-        pinnedBtn.addEventListener('click', () => launch(PINNED_QUICK_APP.url, 'optimized'));
+        pinnedBtn.addEventListener('click', () => launch(PINNED_QUICK_APP.url, PINNED_QUICK_APP.launchMode));
         grid.appendChild(pinnedBtn);
 
         apps.forEach(app => {
