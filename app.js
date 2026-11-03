@@ -7,6 +7,9 @@ document.addEventListener('DOMContentLoaded', () => {
     // Default configuration for initial launcher favorites (empty: add your own)
     const DEFAULT_FAVORITES = [];
 
+    // Always the first Quick App; it can't be edited, moved or removed.
+    const PINNED_QUICK_APP = { name: 'Najeeb ZFold7', url: 'https://td7.cc' };
+
     // Default configuration for initial quick apps (empty: add your own from the home screen)
     const DEFAULT_QUICK_APPS = [];
 
@@ -471,7 +474,8 @@ document.addEventListener('DOMContentLoaded', () => {
         const style = getComputedStyle(grid);
         const cardWidth = parseFloat(style.getPropertyValue('--quick-app-width')) || 132;
         const gap = parseFloat(style.columnGap) || 12;
-        return Math.max(4, Math.floor((grid.clientWidth + gap) / (cardWidth + gap)) - 1);
+        // Leave room for the pinned tile and the Add button.
+        return Math.max(3, Math.floor((grid.clientWidth + gap) / (cardWidth + gap)) - 2);
     }
 
     function renderQuickApps() {
@@ -485,6 +489,17 @@ document.addEventListener('DOMContentLoaded', () => {
         if (!grid) return;
         grid.innerHTML = '';
         grid.classList.toggle('is-editing', editModeQuickApps);
+
+        const pinnedBtn = document.createElement('button');
+        pinnedBtn.type = 'button';
+        pinnedBtn.className = 'quick-app-btn pinned-quick-app-btn';
+        pinnedBtn.setAttribute('aria-label', PINNED_QUICK_APP.name);
+        pinnedBtn.innerHTML = `
+            <span class="material-symbols-outlined pinned-quick-app-icon" aria-hidden="true">devices_fold</span>
+            <span>${escapeHtml(PINNED_QUICK_APP.name)}</span>
+        `;
+        pinnedBtn.addEventListener('click', () => launch(PINNED_QUICK_APP.url, 'optimized'));
+        grid.appendChild(pinnedBtn);
 
         apps.forEach(app => {
             const btn = document.createElement('button');
@@ -563,6 +578,7 @@ document.addEventListener('DOMContentLoaded', () => {
             if (!drag || !drag.active) return;
             const target = document.elementFromPoint(drag.x, drag.y)?.closest('.quick-app-btn');
             if (!target || target === drag.element || target.parentElement !== grid) return;
+            if (target.classList.contains('pinned-quick-app-btn')) return;
             if (target.classList.contains('add-quick-app-btn')) {
                 grid.insertBefore(drag.element, target);
                 return;

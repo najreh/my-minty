@@ -1790,13 +1790,6 @@ body::after {
     background-clip: text;
     color: transparent;
 }
-.wordmark-subtitle {
-    font-size: 15px;
-    font-weight: 500;
-    letter-spacing: 0.22em;
-    text-transform: uppercase;
-    color: var(--text-muted);
-}
 
 /* Minty (the car) across the top of the page, fading into the background
    by the address bar. --backdrop-end is set from app.js. */
@@ -1835,7 +1828,6 @@ body::after {
     text-shadow: 0 1px 8px rgba(0, 0, 0, 0.7);
 }
 .wordmark-title { filter: drop-shadow(0 2px 14px rgba(0, 0, 0, 0.6)); }
-.wordmark-subtitle { color: rgba(236, 248, 243, 0.85); text-shadow: 0 1px 8px rgba(0, 0, 0, 0.7); }
 
 /* Reserve the footer's full touch area so it never covers the last row. */
 html, body { min-height: 100%; height: 100%; overflow: hidden; }
@@ -2070,7 +2062,7 @@ body { display: block; }
     .console-section { gap: 8px; }
     .home-logo-container { height: 84px; }
     .wordmark-title { font-size: 44px; }
-    .wordmark-eyebrow, .wordmark-subtitle { font-size: 12px; }
+    .wordmark-eyebrow { font-size: 12px; }
     .console-input-wrapper { height: 56px; }
     .quick-apps-section, .favorites-section { gap: 6px; }
     #quick-apps-grid .quick-app-btn { height: 98px; gap: 10px; }
@@ -2083,7 +2075,7 @@ body { display: block; }
     .home-logo-container { height: 66px; }
     .home-wordmark { gap: 3px; }
     .wordmark-title { font-size: 36px; }
-    .wordmark-eyebrow, .wordmark-subtitle { font-size: 10px; }
+    .wordmark-eyebrow { font-size: 10px; }
     .console-section { gap: 6px; }
     .console-input-wrapper { height: 52px; }
     #quick-apps-grid .quick-app-btn { height: 90px; gap: 8px; }
@@ -2108,3 +2100,19 @@ body { display: block; }
     font-size: 15px;
 }
 .favorites-empty .material-symbols-outlined { color: var(--color-primary); }
+
+/* Permanent Najeeb ZFold7 tile. */
+.quick-app-btn.pinned-quick-app-btn {
+    border-color: rgba(61, 232, 168, 0.45);
+    box-shadow: inset 0 0 0 1px rgba(61, 232, 168, 0.12), var(--shadow-soft);
+}
+.pinned-quick-app-icon {
+    width: 64px;
+    height: 64px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 44px;
+    color: var(--color-primary);
+}
+#quick-apps-grid .pinned-quick-app-icon { width: 56px; height: 56px; font-size: 40px; }
