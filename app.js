@@ -1,5 +1,5 @@
 /* ==========================================================================
-   Minty - Najeeb's Tesla Launcher Logic (Premium HMI)
+   MINTY dashboard logic, created by Najeeb (Premium HMI)
    ========================================================================== */
 
 document.addEventListener('DOMContentLoaded', () => {
@@ -20,7 +20,6 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Settings defaults
     const defaultSettings = {
-        vibrationEnabled: true,
         longPressDuration: 800, // snappier touch holds
         timeFormat24h: true
     };
@@ -41,12 +40,6 @@ document.addEventListener('DOMContentLoaded', () => {
     // ==========================================================================
     // Helper & Redirection Functions
     // ==========================================================================
-
-    function triggerHapticFeedback() {
-        if (settings.vibrationEnabled && navigator.vibrate) {
-            navigator.vibrate(30); // Subtler 30ms haptic
-        }
-    }
 
     function isSafeUrl(url) {
         return typeof url === 'string' && /^https?:\/\//i.test(url);
@@ -461,7 +454,6 @@ document.addEventListener('DOMContentLoaded', () => {
         `;
         
         addCard.addEventListener('click', () => {
-            triggerHapticFeedback();
             document.getElementById('fav-url-input').value = document.getElementById('url-input').value;
             document.getElementById('fav-label-input').value = '';
             document.getElementById('fav-modal-title').textContent = 'Add to Favorites';
@@ -554,7 +546,6 @@ document.addEventListener('DOMContentLoaded', () => {
         `;
         
         addBtn.addEventListener('click', () => {
-            triggerHapticFeedback();
             document.getElementById('fav-url-input').value = document.getElementById('url-input').value;
             document.getElementById('fav-label-input').value = '';
             document.getElementById('fav-modal-title').textContent = 'Add to Quick Apps';
@@ -629,7 +620,6 @@ document.addEventListener('DOMContentLoaded', () => {
                 drag.preview.style.setProperty('--drag-icon-size', getComputedStyle(icon).width);
                 document.body.appendChild(drag.preview);
                 drag.element.classList.add('is-dragging');
-                triggerHapticFeedback();
                 drag.frame = requestAnimationFrame(scrollAtEdge);
             }
             if (drag.active) {
@@ -686,7 +676,6 @@ document.addEventListener('DOMContentLoaded', () => {
             isScrolling = false;
             pressTimer = setTimeout(() => {
                 isLongPress = true;
-                triggerHapticFeedback();
                 openOptionsModal(item, isRecent, isQuickApp);
             }, settings.longPressDuration);
         };
@@ -703,7 +692,6 @@ document.addEventListener('DOMContentLoaded', () => {
             if (isScrolling) return;
 
             if (!isLongPress) {
-                triggerHapticFeedback();
                 // Launch last URL context if saved, otherwise default url
                 const targetUrl = item.lastUrl || item.url;
                 launch(targetUrl, item.launchMode || 'optimized');
@@ -745,7 +733,6 @@ document.addEventListener('DOMContentLoaded', () => {
     // Bind close listeners for all overlays
     document.querySelectorAll('.modal-close').forEach(btn => {
         btn.addEventListener('click', () => {
-            triggerHapticFeedback();
             const modal = btn.closest('.modal-overlay');
             if (modal) closeModal(modal.id);
         });
@@ -760,7 +747,6 @@ document.addEventListener('DOMContentLoaded', () => {
                     if (document.activeElement) document.activeElement.blur();
                     return;
                 }
-                triggerHapticFeedback();
                 closeModal(overlay.id);
             }
         });
@@ -768,19 +754,16 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Pinned trigger links
     document.getElementById('btn-help').addEventListener('click', () => {
-        triggerHapticFeedback();
         openModal('modal-help');
     });
 
     document.getElementById('btn-settings').addEventListener('click', () => {
-        triggerHapticFeedback();
         openModal('modal-settings');
     });
 
     // Edit Favorites Button
     const btnEditFavs = document.getElementById('btn-edit-favorites');
     btnEditFavs.addEventListener('click', () => {
-        triggerHapticFeedback();
         editModeFavorites = !editModeFavorites;
         btnEditFavs.classList.toggle('active', editModeFavorites);
         btnEditFavs.textContent = editModeFavorites ? 'Done' : 'Edit';
@@ -791,7 +774,6 @@ document.addEventListener('DOMContentLoaded', () => {
     const btnEditQuickApps = document.getElementById('btn-edit-quick-apps');
     const btnEditAllApps = document.getElementById('btn-edit-all-apps');
     function toggleQuickAppsEditing() {
-        triggerHapticFeedback();
         editModeQuickApps = !editModeQuickApps;
         btnEditQuickApps.classList.toggle('active', editModeQuickApps);
         btnEditQuickApps.textContent = editModeQuickApps ? 'Done' : 'Edit';
@@ -803,7 +785,6 @@ document.addEventListener('DOMContentLoaded', () => {
     btnEditAllApps.addEventListener('click', toggleQuickAppsEditing);
 
     document.getElementById('btn-show-all-apps').addEventListener('click', () => {
-        triggerHapticFeedback();
         openModal('modal-all-apps');
         document.querySelector('.apps-folder').focus();
     });
@@ -831,7 +812,6 @@ document.addEventListener('DOMContentLoaded', () => {
     // ==========================================================================
 
     document.getElementById('btn-save-favorite').addEventListener('click', async () => {
-        triggerHapticFeedback();
         const url = document.getElementById('fav-url-input').value.trim();
         const name = document.getElementById('fav-label-input').value.trim();
         
@@ -961,7 +941,6 @@ document.addEventListener('DOMContentLoaded', () => {
 
     document.getElementById('opt-direct').addEventListener('click', () => {
         if (selectedItem) {
-            triggerHapticFeedback();
             const targetUrl = selectedItem.lastUrl || selectedItem.url;
             launch(targetUrl, 'direct');
             closeModal('modal-options');
@@ -970,7 +949,6 @@ document.addEventListener('DOMContentLoaded', () => {
 
     document.getElementById('opt-optimized').addEventListener('click', () => {
         if (selectedItem) {
-            triggerHapticFeedback();
             const targetUrl = selectedItem.lastUrl || selectedItem.url;
             launch(targetUrl, 'optimized');
             closeModal('modal-options');
@@ -979,7 +957,6 @@ document.addEventListener('DOMContentLoaded', () => {
 
     document.getElementById('opt-helper-login').addEventListener('click', () => {
         if (selectedItem) {
-            triggerHapticFeedback();
             const helperUrl = getHelperLoginUrl(selectedItem.url);
             launch(helperUrl, 'optimized');
             closeModal('modal-options');
@@ -988,7 +965,6 @@ document.addEventListener('DOMContentLoaded', () => {
 
     document.getElementById('opt-copy').addEventListener('click', () => {
         if (selectedItem) {
-            triggerHapticFeedback();
             const targetUrl = getOptimizedUrl(selectedItem.lastUrl || selectedItem.url);
             navigator.clipboard.writeText(targetUrl).then(() => {
                 const textEl = document.getElementById('opt-copy').querySelector('.modal-action-name');
@@ -1007,7 +983,6 @@ document.addEventListener('DOMContentLoaded', () => {
     // Reorder Shift Left
     document.getElementById('opt-move-left').addEventListener('click', () => {
         if (selectedItem && selectedIsQuickApp) {
-            triggerHapticFeedback();
             let apps = getQuickApps();
             const idx = apps.findIndex(a => a.id === selectedItem.id);
             if (idx > 0) {
@@ -1024,7 +999,6 @@ document.addEventListener('DOMContentLoaded', () => {
     // Reorder Shift Right
     document.getElementById('opt-move-right').addEventListener('click', () => {
         if (selectedItem && selectedIsQuickApp) {
-            triggerHapticFeedback();
             let apps = getQuickApps();
             const idx = apps.findIndex(a => a.id === selectedItem.id);
             if (idx !== -1 && idx < apps.length - 1) {
@@ -1040,7 +1014,6 @@ document.addEventListener('DOMContentLoaded', () => {
 
     document.getElementById('opt-edit').addEventListener('click', () => {
         if (selectedItem) {
-            triggerHapticFeedback();
             closeModal('modal-options');
             
             document.getElementById('fav-url-input').value = selectedItem.url;
@@ -1053,7 +1026,6 @@ document.addEventListener('DOMContentLoaded', () => {
 
     document.getElementById('opt-delete').addEventListener('click', () => {
         if (selectedItem) {
-            triggerHapticFeedback();
             closeModal('modal-options');
             
             if (selectedIsRecent) {
@@ -1092,7 +1064,6 @@ document.addEventListener('DOMContentLoaded', () => {
 
     urlInput.addEventListener('input', updateClearButtonState);
     clearBtn.addEventListener('click', () => {
-        triggerHapticFeedback();
         urlInput.value = '';
         updateClearButtonState();
         urlInput.focus();
@@ -1100,7 +1071,6 @@ document.addEventListener('DOMContentLoaded', () => {
 
     assistButtons.forEach(btn => {
         btn.addEventListener('click', () => {
-            triggerHapticFeedback();
             const textToAppend = btn.getAttribute('data-value');
             const startPos = urlInput.selectionStart;
             const endPos = urlInput.selectionEnd;
@@ -1116,17 +1086,14 @@ document.addEventListener('DOMContentLoaded', () => {
 
     if (btnDirect) {
         btnDirect.addEventListener('click', () => {
-            triggerHapticFeedback();
             launch(urlInput.value, 'direct');
         });
     }
     btnOptimized.addEventListener('click', () => {
-        triggerHapticFeedback();
         launch(urlInput.value, 'optimized');
     });
     urlInput.addEventListener('keydown', (e) => {
         if (e.key === 'Enter') {
-            triggerHapticFeedback();
             launch(urlInput.value, 'optimized');
         }
     });
@@ -1136,7 +1103,6 @@ document.addEventListener('DOMContentLoaded', () => {
     // ==========================================================================
 
     function applySettings() {
-        document.getElementById('vibration-toggle').checked = settings.vibrationEnabled;
         document.getElementById('long-press-slider').value = settings.longPressDuration;
         document.getElementById('long-press-value').textContent = settings.longPressDuration + 'ms';
         
@@ -1186,12 +1152,6 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
 
-    document.getElementById('vibration-toggle').addEventListener('change', (e) => {
-        settings.vibrationEnabled = e.target.checked;
-        saveSettings();
-        triggerHapticFeedback();
-    });
-
     const longPressSlider = document.getElementById('long-press-slider');
     longPressSlider.addEventListener('input', (e) => {
         const val = parseInt(e.target.value);
@@ -1200,12 +1160,10 @@ document.addEventListener('DOMContentLoaded', () => {
     });
     longPressSlider.addEventListener('change', () => {
         saveSettings();
-        triggerHapticFeedback();
     });
 
     document.querySelectorAll('#time-format-control .segment-btn').forEach(btn => {
         btn.addEventListener('click', () => {
-            triggerHapticFeedback();
             const value = btn.getAttribute('data-value');
             settings.timeFormat24h = (value === '24h');
             saveSettings();
@@ -1214,7 +1172,6 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Fullscreen Launcher Header Button click event
     document.getElementById('btn-fullscreen-launcher').addEventListener('click', () => {
-        triggerHapticFeedback();
         launch(window.location.href, 'optimized');
     });
 
@@ -1222,7 +1179,6 @@ document.addEventListener('DOMContentLoaded', () => {
         if (confirm('Reset all settings to default?')) {
             settings = {...defaultSettings};
             saveSettings();
-            triggerHapticFeedback();
         }
     });
 
